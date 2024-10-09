@@ -32,11 +32,11 @@
       "libopencm3",
       "stm32cube"
     ],
-    "name": "Flight Computer",
+    "name": "crash-n-burn",
     "upload": {
       "maximum_ram_size": 131072,
       "maximum_size": 524288,
-      "protocol": "stlink", 
+      "protocol": "dfu", 
       "protocols": [
         "stlink",
         "jlink",

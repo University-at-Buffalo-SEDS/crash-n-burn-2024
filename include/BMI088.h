@@ -5,10 +5,9 @@
 #include <SPI.h>
 
 // Pin Definitions
-#define BMI088_CS_PIN    PA4  // Chip Select Pin
+#define BMI088_CS_PIN    PB11  // Chip Select Pin
 
 // BMI088 Register Addresses
-#define BMI088_ACC_CHIP_ID              (0x1E)
 #define BMI088_ACC_REG_CHIP_ID          (0x00)
 #define BMI088_ACC_REG_DATA             (0x12)
 #define BMI088_ACC_REG_CONF             (0x40)
@@ -23,6 +22,7 @@
 #define BMI088_ACC_ODR_200Hz            (0x09)
 #define BMI088_ACC_PWR_CTRL_ENABLE      (0x04)
 #define BMI088_ACC_SOFTRESET_CMD        (0xB6)
+#define BMI088_ACC_CHIP_ID              (0x1E)
 
 // SPI Settings
 #define BMI088_SPI_SPEED                10000000 // 10 MHz
