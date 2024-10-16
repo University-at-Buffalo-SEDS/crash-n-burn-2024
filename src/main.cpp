@@ -3,6 +3,11 @@
 #include <STM32FreeRTOS.h> // Ensure FreeRTOS is installed
 #include "BMI088.h"
 
+#if defined (USBCON) && defined(USBD_USE_CDC)
+#include "USBSerial.h"
+USBSerial usb_serial;
+#endif
+
 // Create an instance of the BMI088 class
 BMI088 bmi088;
 
@@ -22,7 +27,11 @@ void SerialTaskFunction(void *pvParameters);
 
 void setup() {
     // Initialize Serial for debugging
-    Serial.begin(115200);
+#if defined (USBCON) && defined(USBD_USE_CDC)
+	usb_serial.begin();
+#else
+	Serial.begin(9600);
+#endif
     while (!Serial) { ; } // Wait for Serial to initialize
 
     // Initialize BMI088
