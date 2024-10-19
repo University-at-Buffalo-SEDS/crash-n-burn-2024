@@ -1,139 +1,104 @@
 #include <Arduino.h>
 #include <SPI.h>
-#include <STM32FreeRTOS.h> // Ensure FreeRTOS is installed
-#include "BMI088.h"
+#include <STM32FreeRTOS.h> 
 
-#if defined (USBCON) && defined(USBD_USE_CDC)
+#include "BMI088Accel.h"
+#include "config.h"
+
+#if defined(USBCON) && defined(USBD_USE_CDC)
 #include "USBSerial.h"
 USBSerial usb_serial;
 #endif
 
-// Create an instance of the BMI088 class
-BMI088 bmi088;
+// Create an instance of the BMI088Accel class using the CS pin
+BMI088Accel accel(PB11);
 
-// Mutex for protecting access to accelerometer data
-SemaphoreHandle_t accelMutex;
+// Shared data array for accelerometer readings
+float accelData[3];
 
-// Shared accelerometer data
-float accelData[3] = {0.0f, 0.0f, 0.0f};
+// Mutex for synchronizing access to accelData
+SemaphoreHandle_t xAccelDataMutex;
 
-// Task Handles
-TaskHandle_t SensorTaskHandle = NULL;
-TaskHandle_t SerialTaskHandle = NULL;
-
-// Task Prototypes
-void SensorTask(void *pvParameters);
-void SerialTaskFunction(void *pvParameters);
+// Task function declarations
+void TaskReadAccel(void *pvParameters);
+void TaskPrintAccel(void *pvParameters);
 
 void setup() {
-    // Initialize Serial for debugging
-#if defined (USBCON) && defined(USBD_USE_CDC)
-	usb_serial.begin();
-#else
-	Serial.begin(9600);
-#endif
-    while (!Serial) { ; } // Wait for Serial to initialize
+    // Initialize serial communication
+    #if defined(USBCON) && defined(USBD_USE_CDC)
+        usb_serial.begin();
+    #else
+        Serial.begin(9600);
+    #endif
+    
+    // Wait for Serial to initialize
+    while (!Serial) { ; } 
 
-    // Initialize BMI088
-    if (!bmi088.begin()) {
-        Serial.println(F("Failed to initialize BMI088"));
-        // Handle initialization failure
-        while (1) { ; }
+    // Initialize the SPI bus
+    SPI.begin();
+
+    // Setup the accelerometer
+    accel.setup();
+
+    // Create a mutex for accessing accelData
+    xAccelDataMutex = xSemaphoreCreateMutex();
+    if (xAccelDataMutex == NULL) {
+        Serial.println(F("Error creating mutex"));
+        while (1);
     }
 
-    // Create Mutex
-    accelMutex = xSemaphoreCreateMutex();
-    if (accelMutex == NULL) {
-        Serial.println(F("Failed to create mutex"));
-        while (1) { ; }
-    }
-
-    // Create Sensor Task
-    xTaskCreate(
-        SensorTask,         // Task function
-        "Sensor Task",      // Task name
-        256,                // Stack size (words)
-        NULL,               // Task input parameter
-        1,                  // Priority
-        &SensorTaskHandle   // Task handle
-    );
-
-    // Create Serial Task
-    xTaskCreate(
-        SerialTaskFunction,
-        "Serial Task",
-        256,
-        NULL,
-        1,
-        &SerialTaskHandle
-    );
+    // Create the tasks
+    xTaskCreate(TaskReadAccel, "ReadAccel", 256, NULL, 2, NULL);
+    xTaskCreate(TaskPrintAccel, "PrintAccel", 256, NULL, 1, NULL);
 
     // Start the scheduler
     vTaskStartScheduler();
 }
 
 void loop() {
-    // Empty. Tasks are running in FreeRTOS.
+    // Empty. Tasks are now scheduled by FreeRTOS.
 }
 
-// Sensor Task: Reads accelerometer data periodically
-void SensorTask(void *pvParameters) {
+// Task to read accelerometer data
+void TaskReadAccel(void *pvParameters) {
     (void) pvParameters;
 
     for (;;) {
-        float tempData[3];
-        if (bmi088.readAccelerometer(tempData)) {
-            // Acquire Mutex
-            if (xSemaphoreTake(accelMutex, (TickType_t)10) == pdTRUE) {
-                // Update shared data
-                accelData[0] = tempData[0];
-                accelData[1] = tempData[1];
-                accelData[2] = tempData[2];
-                // Release Mutex
-                xSemaphoreGive(accelMutex);
-            }
-        } else {
-            Serial.println(F("Failed to read accelerometer data"));
+        // Read data from the accelerometer
+        accel.step();
+
+        // Acquire mutex to write to shared data
+        if (xSemaphoreTake(xAccelDataMutex, portMAX_DELAY) == pdTRUE) {
+            float *data = accel.get();
+            accelData[0] = data[0];
+            accelData[1] = data[1];
+            accelData[2] = data[2];
+            xSemaphoreGive(xAccelDataMutex); // Release mutex
         }
 
-        // Delay for 100ms
+        // Delay for 100 ms
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
-// Serial Task: Outputs accelerometer data over Serial
-void SerialTaskFunction(void *pvParameters) {
+// Task to print accelerometer data
+void TaskPrintAccel(void *pvParameters) {
     (void) pvParameters;
 
     for (;;) {
-        float currentData[3];
-
-        // Acquire Mutex
-        if (xSemaphoreTake(accelMutex, (TickType_t)10) == pdTRUE) {
-            // Copy data
-            currentData[0] = accelData[0];
-            currentData[1] = accelData[1];
-            currentData[2] = accelData[2];
-            // Release Mutex
-            xSemaphoreGive(accelMutex);
+        // Acquire mutex to read from shared data
+        if (xSemaphoreTake(xAccelDataMutex, portMAX_DELAY) == pdTRUE) {
+            Serial.print(F("Accel: "));
+            Serial.print(accelData[0]);
+            Serial.print(F(", "));
+            Serial.print(accelData[1]);
+            Serial.print(F(", "));
+            Serial.print(accelData[2]);
+            Serial.println(F(" m/s^2"));
+            xSemaphoreGive(xAccelDataMutex); // Release mutex
         }
 
-        // Output data
-        Serial.print(F("Accel X: "));
-        Serial.print(currentData[0], 3);
-        Serial.print(F(" g, Y: "));
-        Serial.print(currentData[1], 3);
-        Serial.print(F(" g, Z: "));
-        Serial.print(currentData[2], 3);
-        Serial.println(F(" g"));
-
-        // Calculate magnitude
-        float magnitude = sqrt(pow(currentData[0], 2) + pow(currentData[1], 2) + pow(currentData[2], 2));
-        Serial.print(F("Magnitude: "));
-        Serial.print(magnitude, 3);
-        Serial.println(F(" g"));
-
-        // Delay for 500ms
-        vTaskDelay(pdMS_TO_TICKS(500));
+        // Delay for 100 ms
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
