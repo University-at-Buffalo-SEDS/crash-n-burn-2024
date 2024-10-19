@@ -19,6 +19,13 @@ BMI088Accel::BMI088Accel(uint8_t cs_pin) : cs_pin(cs_pin) {
     // Set the CS pin as output and deactivate the device by setting it HIGH
     pinMode(cs_pin, OUTPUT);
     digitalWrite(cs_pin, HIGH);
+
+    // Create a mutex for last_accel
+    xLastAccelMutex = xSemaphoreCreateMutex();
+    if (xLastAccelMutex == NULL) {
+        Serial.println(F("Error creating accelerometer mutex"));
+        while (1);  // Halt execution if mutex creation fails
+    }
 }
 
 void BMI088Accel::setup() {
@@ -86,26 +93,38 @@ void BMI088Accel::step() {
     float BMI088_MULTIPLIER = 1.0f / (1 << 15) * (1 << (range_conf + 1)) * 1.5f;
 
     // Convert from raw LSB to m/s^2
-    last_accel[0] = static_cast<float>(raw_x) * BMI088_MULTIPLIER * STANDARD_GRAVITY;
-    last_accel[1] = static_cast<float>(raw_y) * BMI088_MULTIPLIER * STANDARD_GRAVITY;
-    last_accel[2] = static_cast<float>(raw_z) * BMI088_MULTIPLIER * STANDARD_GRAVITY;
+    if (xSemaphoreTake(xLastAccelMutex, portMAX_DELAY) == pdTRUE) {
+        last_accel[0] = static_cast<float>(raw_x) * BMI088_MULTIPLIER * STANDARD_GRAVITY;
+        last_accel[1] = static_cast<float>(raw_y) * BMI088_MULTIPLIER * STANDARD_GRAVITY;
+        last_accel[2] = static_cast<float>(raw_z) * BMI088_MULTIPLIER * STANDARD_GRAVITY;
+        xSemaphoreGive(xLastAccelMutex);
+    }
 }
 
-float* BMI088Accel::get() {
-    return last_accel;
+void BMI088Accel::get(float* data) {
+    // Copy the last_accel data into the provided array safely
+    if (xSemaphoreTake(xLastAccelMutex, portMAX_DELAY) == pdTRUE) {
+        data[0] = last_accel[0];
+        data[1] = last_accel[1];
+        data[2] = last_accel[2];
+        xSemaphoreGive(xLastAccelMutex);
+    }
 }
 
 void BMI088Accel::print() {
-    float* a = get();
-    Serial.print(F("Accel: "));
-    Serial.print(a[0]);
-    Serial.print(F(", "));
-    Serial.print(a[1]);
-    Serial.print(F(", "));
-    Serial.print(a[2]);
-    Serial.print(F(" ("));
-    Serial.print(sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]));
-    Serial.println(F(") m/s^2"));
+    // Acquire mutex before accessing last_accel
+    if (xSemaphoreTake(xLastAccelMutex, portMAX_DELAY) == pdTRUE) {
+        Serial.print(F("Accel: "));
+        Serial.print(last_accel[0]);
+        Serial.print(F(", "));
+        Serial.print(last_accel[1]);
+        Serial.print(F(", "));
+        Serial.print(last_accel[2]);
+        Serial.print(F(" ("));
+        Serial.print(sqrtf(last_accel[0] * last_accel[0] + last_accel[1] * last_accel[1] + last_accel[2] * last_accel[2]));
+        Serial.println(F(") m/s^2"));
+        xSemaphoreGive(xLastAccelMutex);
+    }
 }
 
 void BMI088Accel::spi_start() {
