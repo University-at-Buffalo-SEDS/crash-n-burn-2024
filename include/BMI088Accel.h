@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <math.h>
-#include <STM32FreeRTOS.h>  // Include FreeRTOS for synchronization primitives
 
 class BMI088Accel {
 public:
@@ -18,7 +17,7 @@ public:
     void step();
 
     // Returns the last read accelerometer's XYZ acceleration in m/s^2
-    void get(float* data);  // Modified to copy data safely
+    void get(float* data);  // Copies data into the provided array
 
     // Prints the accelerometer's data for debugging
     void print();
@@ -58,9 +57,6 @@ private:
 
     // Chip select pin number
     uint8_t cs_pin;
-
-    // Mutex for synchronizing access to last_accel
-    SemaphoreHandle_t xLastAccelMutex;
 };
 
 #endif // BMI088_ACCEL_H

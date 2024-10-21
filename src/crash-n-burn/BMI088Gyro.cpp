@@ -12,13 +12,6 @@ BMI088Gyro::BMI088Gyro(uint8_t cs_pin) : cs_pin(cs_pin) {
     // Set the CS pin as output and deactivate the device by setting it HIGH
     pinMode(cs_pin, OUTPUT);
     digitalWrite(cs_pin, HIGH);
-
-    // Create a mutex for last_gyro
-    xLastGyroMutex = xSemaphoreCreateMutex();
-    if (xLastGyroMutex == NULL) {
-        Serial.println(F("Error creating gyroscope mutex"));
-        while (1);  // Halt execution if mutex creation fails
-    }
 }
 
 void BMI088Gyro::setup() {
@@ -61,36 +54,26 @@ void BMI088Gyro::step() {
     int16_t raw_z = (raw_data[5] << 8) | raw_data[4];
 
     // Convert from raw LSB to degrees per second
-    if (xSemaphoreTake(xLastGyroMutex, portMAX_DELAY) == pdTRUE) {
-        last_gyro[0] = static_cast<float>(raw_x) / BMI088_GYR_2000DPS_RES_LSB_DPS;
-        last_gyro[1] = static_cast<float>(raw_y) / BMI088_GYR_2000DPS_RES_LSB_DPS;
-        last_gyro[2] = static_cast<float>(raw_z) / BMI088_GYR_2000DPS_RES_LSB_DPS;
-        xSemaphoreGive(xLastGyroMutex);
-    }
+    last_gyro[0] = static_cast<float>(raw_x) / BMI088_GYR_2000DPS_RES_LSB_DPS;
+    last_gyro[1] = static_cast<float>(raw_y) / BMI088_GYR_2000DPS_RES_LSB_DPS;
+    last_gyro[2] = static_cast<float>(raw_z) / BMI088_GYR_2000DPS_RES_LSB_DPS;
 }
 
 void BMI088Gyro::get(float* data) {
-    // Copy the last_gyro data into the provided array safely
-    if (xSemaphoreTake(xLastGyroMutex, portMAX_DELAY) == pdTRUE) {
-        data[0] = last_gyro[0];
-        data[1] = last_gyro[1];
-        data[2] = last_gyro[2];
-        xSemaphoreGive(xLastGyroMutex);
-    }
+    // Copy the last_gyro data into the provided array
+    data[0] = last_gyro[0];
+    data[1] = last_gyro[1];
+    data[2] = last_gyro[2];
 }
 
 void BMI088Gyro::print() {
-    // Acquire mutex before accessing last_gyro
-    if (xSemaphoreTake(xLastGyroMutex, portMAX_DELAY) == pdTRUE) {
-        Serial.print(F("Gyro: "));
-        Serial.print(last_gyro[0]);
-        Serial.print(F(", "));
-        Serial.print(last_gyro[1]);
-        Serial.print(F(", "));
-        Serial.print(last_gyro[2]);
-        Serial.println(F(" degree/s"));
-        xSemaphoreGive(xLastGyroMutex);
-    }
+    Serial.print(F("Gyro: "));
+    Serial.print(last_gyro[0]);
+    Serial.print(F(", "));
+    Serial.print(last_gyro[1]);
+    Serial.print(F(", "));
+    Serial.print(last_gyro[2]);
+    Serial.println(F(" degree/s"));
 }
 
 void BMI088Gyro::spi_start() {
