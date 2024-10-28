@@ -84,12 +84,12 @@ private:
     void writeReg(uint8_t reg, uint8_t data);
     void readBuffer(uint8_t reg, uint8_t* data, uint8_t length);
 
+    uint8_t cs_pin;
+    
     // Variables to store the last values
     float last_altitude;
     float last_pressure;
     int16_t last_temperature;
-
-    uint8_t cs_pin;
 };
 
 #endif // BMP390_H

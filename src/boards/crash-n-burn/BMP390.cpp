@@ -117,11 +117,13 @@ void BMP390::spiEnd() {
 
 uint8_t BMP390::readReg(uint8_t reg) {
     spiStart();
-    SPI.transfer(reg | 0x80);
-    uint8_t res = SPI.transfer(0);
+    SPI.transfer(reg | 0x80);  
+    SPI.transfer(0);           
+    uint8_t res = SPI.transfer(0); 
     spiEnd();
     return res;
 }
+
 
 void BMP390::writeReg(uint8_t reg, uint8_t data) {
     spiStart();
@@ -132,9 +134,11 @@ void BMP390::writeReg(uint8_t reg, uint8_t data) {
 
 void BMP390::readBuffer(uint8_t reg, uint8_t* data, uint8_t length) {
     spiStart();
-    SPI.transfer(reg | 0x80);
+    SPI.transfer(reg | 0x80); 
+    SPI.transfer(0);           
     for (uint8_t i = 0; i < length; i++) {
-        data[i] = SPI.transfer(0);
+        data[i] = SPI.transfer(0); 
     }
     spiEnd();
 }
+

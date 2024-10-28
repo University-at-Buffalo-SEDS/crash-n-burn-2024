@@ -4,7 +4,7 @@
 
 #include "BMI088Accel.h"
 #include "BMI088Gyro.h"
-#include "BMP390.h"           // Include the BMP390 driver
+#include "BMP390.h"           
 #include "stm32pinouts.h"
 
 #if defined(USBCON) && defined(USBD_USE_CDC)
@@ -12,40 +12,32 @@
 USBSerial usb_serial;
 #endif
 
-// Create instances of the devices
-BMI088Accel accel(ACCEL_CS_PIN);  // ACCEL_CS_PIN defined in config.h
-BMI088Gyro gyro(GYRO_CS_PIN);     // GYRO_CS_PIN defined in config.h
-BMP390 barometer(BARO_CS_PIN);    // BARO_CS_PIN should also be defined in config.h
+BMI088Accel accel(ACCEL_CS_PIN);  
+BMI088Gyro gyro(GYRO_CS_PIN);    
+BMP390 barometer(BARO_CS_PIN);    
 
-// Shared data structures
 float accelData[3];
 float gyroData[3];
-float baroData[3];  // Stores barometer altitude, pressure, and temperature
+float baroData[3];  
 
-// Mutexes for thread safety
 SemaphoreHandle_t xAccelDataMutex;
 SemaphoreHandle_t xGyroDataMutex;
-SemaphoreHandle_t xBaroDataMutex;  // New mutex for barometer data
+SemaphoreHandle_t xBaroDataMutex;  
 
-// Task function declarations
 void TaskReadSensors(void* pvParameters);
 void TaskPrintSensors(void* pvParameters);
 
 void setup() {
-    // Initialize serial communication
     #if defined(USBCON) && defined(USBD_USE_CDC)
         usb_serial.begin();
     #else
         Serial.begin(9600);
     #endif
 
-    // Wait for Serial to initialize
     while (!Serial) { ; } 
 
-    // Initialize the SPI bus
     SPI.begin();
 
-    // Setup the devices
     accel.setup();
     gyro.setup();
     barometer.setup();
@@ -72,7 +64,7 @@ void loop() {
     // Empty. Tasks are now scheduled by FreeRTOS.
 }
 
-// Task to read data from sensors
+
 void TaskReadSensors(void* pvParameters) {
     (void) pvParameters;
 
