@@ -10,12 +10,8 @@ public:
     BMI088Gyro(uint8_t cs_pin);
 
     void setup();
-
     void step();
-
     void get(float* data);  
-
-    void print();
 
 private:
     static constexpr uint8_t BMI088_GYR_CHIP_ID = 0x0F;

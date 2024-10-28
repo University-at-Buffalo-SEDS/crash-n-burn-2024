@@ -7,20 +7,11 @@
 
 class BMI088Accel {
 public:
-    // Constructor that accepts the chip select pin number
     BMI088Accel(uint8_t cs_pin);
 
-    // Initializes the accelerometer device
     void setup();
-
-    // Reads the latest accelerometer data
     void step();
-
-    // Returns the last read accelerometer's XYZ acceleration in m/s^2
-    void get(float* data);  // Copies data into the provided array
-
-    // Prints the accelerometer's data for debugging
-    void print();
+    void get(float* data);  
 
 private:
     // BMI088 Accelerometer constants

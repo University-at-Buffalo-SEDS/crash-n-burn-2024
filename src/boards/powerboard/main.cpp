@@ -1,64 +1,103 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include "config.h"
+#include <STM32FreeRTOS.h>
 
-#define LTC2990_I2C_ADDRESS     0x98
+#include "LTC2990.h"
 
-#if defined (USBCON) && defined(USBD_USE_CDC)
+#if !defined(HAL_CAN_MODULE_ENABLED)
+#define HAL_CAN_MODULE_ENABLED
+#endif
+
+#if defined(USBCON) && defined(USBD_USE_CDC)
 #include "USBSerial.h"
 USBSerial usb_serial;
 #endif
 
-#define LTC2990_STATUS_REG        0x00
-#define LTC2990_CONTROL_REG       0x01
-#define LTC2990_TRIGGER_REG       0x02
-#define LTC2990_V1_MSB_REG        0x06
-#define LTC2990_V1_LSB_REG        0x07
-#define LTC2990_V2_MSB_REG        0x08
-#define LTC2990_V2_LSB_REG        0x09
-#define LTC2990_V3_MSB_REG        0x0A
-#define LTC2990_V3_LSB_REG        0x0B
-#define LTC2990_V4_MSB_REG        0x0C
-#define LTC2990_V4_LSB_REG        0x0D
-#define LTC2990_TINT_MSB_REG      0x04
-#define LTC2990_TINT_LSB_REG      0x05
+// Create an instance of the LTC2990 device
+LTC2990 ltc2990;
 
-void ltc2990_init();
-int16_t ltc2990_read_voltage(uint8_t msb_reg, uint8_t lsb_reg);
-float ltc2990_read_internal_temperature();
+// Shared data structure
+float ltcVoltages[4];
 
+// Mutex for thread safety
+SemaphoreHandle_t xLTCDataMutex;
+
+// Task function declarations
+void TaskReadLTC(void* pvParameters);
+void TaskPrintLTC(void* pvParameters);
 
 void setup() {
-    #if defined (USBCON) && defined(USBD_USE_CDC)
-	    usb_serial.begin();
+    // Initialize serial communication
+    #if defined(USBCON) && defined(USBD_USE_CDC)
+        usb_serial.begin();
     #else
-	    Serial.begin(9600);
+        Serial.begin(9600);
     #endif
-    while (!Serial) { ; } // Wait for Serial to initialize
 
-    Wire.setSDA(LTC_SDA_PIN);
-    Wire.setSCL(LTC_SCL_PIN);
+    while (!Serial) { ; }
+
     Wire.begin();
+
+    // Setup the device
+    ltc2990.setup();
+
+    // Create mutex for shared data
+    xLTCDataMutex = xSemaphoreCreateMutex();
+
+    if (xLTCDataMutex == NULL) {
+        Serial.println(F("Error creating mutex"));
+        while (1);
+    }
+
+    xTaskCreate(TaskReadLTC, "ReadLTC", 256, NULL, 2, NULL);
+    xTaskCreate(TaskPrintLTC, "PrintLTC", 256, NULL, 1, NULL);
+
+    vTaskStartScheduler();
 }
 
 void loop() {
-    Serial.println("Greetings from the digital world!");
+    // Empty. Tasks are now scheduled by FreeRTOS.
 }
 
-int16_t ltc2990_read_voltage(uint8_t msb_reg, uint8_t lsb_reg) {
-    Wire.beginTransmission(LTC2990_I2C_ADDRESS);
-    Wire.write(msb_reg);
-    Wire.endTransmission(false);
-    Wire.requestFrom(LTC2990_I2C_ADDRESS, 1);
-    uint8_t msb = Wire.read();
+// Task to read data from LTC2990
+void TaskReadLTC(void* pvParameters) {
+    (void) pvParameters;
 
-    Wire.beginTransmission(LTC2990_I2C_ADDRESS);
-    Wire.write(lsb_reg);
-    Wire.endTransmission(false);
-    Wire.requestFrom(LTC2990_I2C_ADDRESS, 1);
-    uint8_t lsb = Wire.read();
+    for (;;) {
+        // Read data from LTC2990
+        ltc2990.step();
 
-    int16_t result = ((int16_t)msb << 8) | lsb;
-    result >>= 4;  // Only 12 bits used for voltage data
-    return result;
+        // Copy data with mutex protection
+        if (xSemaphoreTake(xLTCDataMutex, portMAX_DELAY) == pdTRUE) {
+            ltc2990.get(ltcVoltages);
+            xSemaphoreGive(xLTCDataMutex);
+        }
+
+        // Delay for 100 ms
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+// Task to print data from LTC2990
+void TaskPrintLTC(void* pvParameters) {
+    (void) pvParameters;
+
+    for (;;) {
+        // Print LTC2990 data
+        if (xSemaphoreTake(xLTCDataMutex, portMAX_DELAY) == pdTRUE) {
+            Serial.print(F("Voltages: "));
+            for (int i = 0; i < 4; i++) {
+                Serial.print(F("V"));
+                Serial.print(i + 1);
+                Serial.print(F(": "));
+                Serial.print(ltcVoltages[i], 6);
+                Serial.print(F(" V "));
+            }
+            Serial.println();
+            xSemaphoreGive(xLTCDataMutex);
+        }
+    
+        // Delay for 100 ms
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }

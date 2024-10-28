@@ -49,9 +49,9 @@ void BMI088Gyro::step() {
     read_buf(BMI088_GYR_REG_DATA, raw_data, sizeof(raw_data));
 
     // Convert raw data to 16-bit integers
-    int16_t raw_x = (raw_data[1] << 8) | raw_data[0];
-    int16_t raw_y = (raw_data[3] << 8) | raw_data[2];
-    int16_t raw_z = (raw_data[5] << 8) | raw_data[4];
+    int16_t raw_x = ((int16_t)raw_data[1] << 8) | (int16_t)raw_data[0];
+    int16_t raw_y = ((int16_t)raw_data[3] << 8) | (int16_t)raw_data[2];
+    int16_t raw_z = ((int16_t)raw_data[5] << 8) | (int16_t)raw_data[4];
 
     // Convert from raw LSB to degrees per second
     last_gyro[0] = static_cast<float>(raw_x) / BMI088_GYR_2000DPS_RES_LSB_DPS;
@@ -64,16 +64,6 @@ void BMI088Gyro::get(float* data) {
     data[0] = last_gyro[0];
     data[1] = last_gyro[1];
     data[2] = last_gyro[2];
-}
-
-void BMI088Gyro::print() {
-    Serial.print(F("Gyro: "));
-    Serial.print(last_gyro[0]);
-    Serial.print(F(", "));
-    Serial.print(last_gyro[1]);
-    Serial.print(F(", "));
-    Serial.print(last_gyro[2]);
-    Serial.println(F(" degree/s"));
 }
 
 void BMI088Gyro::spi_start() {

@@ -1,9 +1,9 @@
 # UB SEDS Avionics Firmware 2024-25
 ## Device Drivers 
 This is not a comprehensive list, just the driver that we currently have on boards that need to be converted and tested with FreeRTOS
-- [ ] LTC Driver
+- [x] LTC Driver
 - [ ] Flash Diver
-- [ ] BMP Driver
+- [x] BMP Driver
 - [ ] GPS Driver
 - [ ] APRS Driver
 - [ ] Buzzer Driver

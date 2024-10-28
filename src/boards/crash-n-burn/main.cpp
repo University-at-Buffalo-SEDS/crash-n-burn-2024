@@ -4,7 +4,8 @@
 
 #include "BMI088Accel.h"
 #include "BMI088Gyro.h"
-#include "config.h"
+#include "BMP390.h"           // Include the BMP390 driver
+#include "stm32pinouts.h"
 
 #if defined(USBCON) && defined(USBD_USE_CDC)
 #include "USBSerial.h"
@@ -14,14 +15,17 @@ USBSerial usb_serial;
 // Create instances of the devices
 BMI088Accel accel(ACCEL_CS_PIN);  // ACCEL_CS_PIN defined in config.h
 BMI088Gyro gyro(GYRO_CS_PIN);     // GYRO_CS_PIN defined in config.h
+BMP390 barometer(BARO_CS_PIN);    // BARO_CS_PIN should also be defined in config.h
 
 // Shared data structures
 float accelData[3];
 float gyroData[3];
+float baroData[3];  // Stores barometer altitude, pressure, and temperature
 
 // Mutexes for thread safety
 SemaphoreHandle_t xAccelDataMutex;
 SemaphoreHandle_t xGyroDataMutex;
+SemaphoreHandle_t xBaroDataMutex;  // New mutex for barometer data
 
 // Task function declarations
 void TaskReadSensors(void* pvParameters);
@@ -44,12 +48,14 @@ void setup() {
     // Setup the devices
     accel.setup();
     gyro.setup();
+    barometer.setup();
 
     // Create mutexes for shared data
     xAccelDataMutex = xSemaphoreCreateMutex();
     xGyroDataMutex = xSemaphoreCreateMutex();
+    xBaroDataMutex = xSemaphoreCreateMutex();
 
-    if (xAccelDataMutex == NULL || xGyroDataMutex == NULL) {
+    if (xAccelDataMutex == NULL || xGyroDataMutex == NULL || xBaroDataMutex == NULL) {
         Serial.println(F("Error creating mutexes"));
         while (1);
     }
@@ -89,6 +95,17 @@ void TaskReadSensors(void* pvParameters) {
             xSemaphoreGive(xGyroDataMutex);
         }
 
+        // Read data from barometer
+        barometer.step();
+
+        // Copy barometer data with mutex protection
+        if (xSemaphoreTake(xBaroDataMutex, portMAX_DELAY) == pdTRUE) {
+            baroData[0] = barometer.getAltitude();
+            baroData[1] = barometer.getPressure();
+            baroData[2] = (float)barometer.getTemperature() / 100.0f;  // Convert to degrees Celsius
+            xSemaphoreGive(xBaroDataMutex);
+        }
+
         // Delay for 100 ms
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -123,6 +140,22 @@ void TaskPrintSensors(void* pvParameters) {
             Serial.print(gyroData[2]);
             Serial.println(F(" degree/s"));
             xSemaphoreGive(xGyroDataMutex);
+        }
+
+        // Print barometer data
+        if (xSemaphoreTake(xBaroDataMutex, portMAX_DELAY) == pdTRUE) {
+            Serial.print(F("Altitude: "));
+            Serial.print(baroData[0]);
+            Serial.println(F(" m"));
+
+            Serial.print(F("Pressure: "));
+            Serial.print(baroData[1]);
+            Serial.println(F(" Pa"));
+
+            Serial.print(F("Temp: "));
+            Serial.print(baroData[2]);
+            Serial.println(F(" °C"));
+            xSemaphoreGive(xBaroDataMutex);
         }
 
         // Delay for 100 ms

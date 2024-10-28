@@ -78,9 +78,9 @@ void BMI088Accel::step() {
     read_buf(BMI088_ACC_REG_DATA, raw_data, sizeof(raw_data));
 
     // Convert raw data to 16-bit integers
-    int16_t raw_x = (raw_data[1] << 8) | raw_data[0];
-    int16_t raw_y = (raw_data[3] << 8) | raw_data[2];
-    int16_t raw_z = (raw_data[5] << 8) | raw_data[4];
+    int16_t raw_x = ((int16_t)raw_data[1] << 8) | (int16_t)raw_data[0];
+    int16_t raw_y = ((int16_t)raw_data[3] << 8) | (int16_t)raw_data[2];
+    int16_t raw_z = ((int16_t)raw_data[5] << 8) | (int16_t)raw_data[4];
 
     // Use to go from LSB to G's
     float BMI088_MULTIPLIER = 1.0f / (1 << 15) * (1 << (range_conf + 1)) * 1.5f;
@@ -96,18 +96,6 @@ void BMI088Accel::get(float* data) {
     data[0] = last_accel[0];
     data[1] = last_accel[1];
     data[2] = last_accel[2];
-}
-
-void BMI088Accel::print() {
-    Serial.print(F("Accel: "));
-    Serial.print(last_accel[0]);
-    Serial.print(F(", "));
-    Serial.print(last_accel[1]);
-    Serial.print(F(", "));
-    Serial.print(last_accel[2]);
-    Serial.print(F(" ("));
-    Serial.print(sqrtf(last_accel[0] * last_accel[0] + last_accel[1] * last_accel[1] + last_accel[2] * last_accel[2]));
-    Serial.println(F(") m/s^2"));
 }
 
 void BMI088Accel::spi_start() {
