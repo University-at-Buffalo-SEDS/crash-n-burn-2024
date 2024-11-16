@@ -3,3 +3,4 @@
 #define LTC_SDA_PIN      PA8
 #define LTC_SCL_PIN      PA9
 #define BARO_CS_PIN     PB13
+#define FLASH_CS_PIN    PB14
