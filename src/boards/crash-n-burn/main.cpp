@@ -61,6 +61,9 @@ void setup() {
     // Initialize logging system
     log_setup();
 
+    // Print previous flight's data
+    log_print_all();
+
     // Create FreeRTOS tasks
     xTaskCreate(TaskReadSensors, "ReadSensors", 2048, NULL, 2, &taskReadSensorsHandle);
     xTaskCreate(TaskLogStep, "LogStep", 2048, NULL, 2, &taskLogStepHandle);
@@ -69,6 +72,7 @@ void setup() {
     // Start the FreeRTOS scheduler
     vTaskStartScheduler();
 }
+
 
 void loop() {
     // Empty loop since FreeRTOS handles tasks
@@ -112,7 +116,7 @@ void TaskReadSensors(void* pvParameters) {
         }
 
         // Delay to set data collection rate (e.g., every 100 ms)
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -168,9 +172,6 @@ void TaskConditionMonitor(void* pvParameters) {
             #else
                 Serial.println("Logging duration elapsed. Logging stopped.");
             #endif
-
-            // Optionally, print all logs after logging stops
-            log_print_all();
         }
 
         // Delay between checks (adjust as needed)

@@ -1,4 +1,3 @@
-// log.cpp
 #include "log.hpp"
 #include "FlashMemory.hpp"
 #include "RingBuffer.hpp"
@@ -30,7 +29,6 @@ static void log_print_flight(uint8_t flight);
 static void log_print_msg(const LogMessage& msg);
 
 void log_setup() {
-    // Assuming flash is already initialized in main.cpp
     // Read the last flight number from EEPROM
     flight_num = EEPROM.read(EEPROM_FLIGHT_ADDR) % FlashMemory::FLIGHT_FLASH_FLIGHTS;
     current_page = FlashMemory::FLIGHT_FLASH_FLIGHT_PAGES * flight_num;
@@ -120,13 +118,13 @@ void log_print_all() {
         return;
     }
 
-    Serial.println(F("Printing all flight logs..."));
-    for (uint8_t flight = 0; flight < FlashMemory::FLIGHT_FLASH_FLIGHTS; flight++) {
-        Serial.print(F("Flight "));
-        Serial.println(flight);
-        log_print_flight(flight);
-        Serial.println(F("---"));
-    }
+    uint8_t last_flight = (flight_num == 0) ? (FlashMemory::FLIGHT_FLASH_FLIGHTS - 1) : (flight_num - 1);
+
+    Serial.println(F("Printing previous flight logs..."));
+    Serial.print(F("Flight "));
+    Serial.println(last_flight);
+    log_print_flight(last_flight);
+    Serial.println(F("---"));
 }
 
 static void log_print_flight(uint8_t flight) {
