@@ -57,10 +57,6 @@ uint32_t FlashMemory::flash_status_1() {
     sendCommand(FlashInstruction::READ_STATUS_REGISTER_1);
     uint8_t status = SPI.transfer(0x00);
     spi_end();
-
-    Serial.print(F("Flash Status Register 1: 0x"));
-    Serial.println(status, HEX);
-
     return status;
 }
 

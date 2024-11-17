@@ -1,5 +1,5 @@
+// log.cpp
 #include "log.hpp"
-#include "stm32pinouts.hpp"
 #include "FlashMemory.hpp"
 #include "RingBuffer.hpp"
 #include <Arduino.h>
@@ -14,7 +14,7 @@
 #define LOG_WRITE_BUF_SIZE (LOG_BUF_SIZE * sizeof(LogMessage))
 
 // Flash memory and buffers
-FlashMemory flash(FLASH_CS_PIN);
+extern FlashMemory flash;
 RingBuffer<LogMessage, LOG_BUF_SIZE> log_buf;
 RingBuffer<uint8_t, LOG_WRITE_BUF_SIZE> write_buf;
 
@@ -25,9 +25,12 @@ static size_t written_pages = 0;
 static uint8_t flight_num = 0;
 static bool current_block_erased = false;
 
-void log_setup() {
-    flash.setup();
+// Function prototypes
+static void log_print_flight(uint8_t flight);
+static void log_print_msg(const LogMessage& msg);
 
+void log_setup() {
+    // Assuming flash is already initialized in main.cpp
     // Read the last flight number from EEPROM
     flight_num = EEPROM.read(EEPROM_FLIGHT_ADDR) % FlashMemory::FLIGHT_FLASH_FLIGHTS;
     current_page = FlashMemory::FLIGHT_FLASH_FLIGHT_PAGES * flight_num;
@@ -60,7 +63,7 @@ void log_stop() {
 
 void log_add(const LogMessage& data) {
     if (write_enabled) {
-        if (!log_buf.push(data, true)) {
+        if (!log_buf.push(data, true)) { // Overwrite old data if buffer is full
             Serial.println(F("Log buffer overflow!"));
         }
     }
@@ -84,6 +87,7 @@ void log_step() {
 
     // Write pages from write buffer to flash
     uint8_t page[FlashMemory::FLIGHT_FLASH_PAGE_SIZE];
+    size_t bytes_per_page = FlashMemory::FLIGHT_FLASH_PAGE_SIZE;
     while (written_pages < FlashMemory::FLIGHT_FLASH_FLIGHT_PAGES && !flash.isBusy()) {
         // Erase new block if necessary
         if (!current_block_erased && (current_page % FlashMemory::FLIGHT_FLASH_PAGES_PER_BLOCK == 0)) {
@@ -94,36 +98,36 @@ void log_step() {
         current_block_erased = false;
 
         // If not enough data to fill a page, wait
-        if (write_buf.used() < FlashMemory::FLIGHT_FLASH_PAGE_SIZE) {
+        if (write_buf.used() < bytes_per_page) {
             break;
         }
 
         // Pop data into page buffer
-        if (!write_buf.pop(page, FlashMemory::FLIGHT_FLASH_PAGE_SIZE)) {
+        if (!write_buf.pop(page, bytes_per_page)) {
             break;
         }
 
         // Write page to flash
         flash.write(current_page * FlashMemory::FLIGHT_FLASH_PAGE_SIZE, page);
-        current_page++;
         written_pages++;
+        current_page++;
     }
 }
 
+void log_print_all() {
+    if (write_enabled) {
+        Serial.println(F("Cannot print logs while logging is active."));
+        return;
+    }
 
-static void log_print_msg(const LogMessage& msg) {
-    Serial.print(msg.time_ms); Serial.print(',');
-    Serial.print(msg.gyro_x, 2); Serial.print(',');
-    Serial.print(msg.gyro_y, 2); Serial.print(',');
-    Serial.print(msg.gyro_z, 2); Serial.print(',');
-    Serial.print(msg.accel_x, 2); Serial.print(',');
-    Serial.print(msg.accel_y, 2); Serial.print(',');
-    Serial.print(msg.accel_z, 2); Serial.print(',');
-    Serial.print(msg.temp, 2); Serial.print(',');
-    Serial.print(msg.pressure, 2);
-    Serial.println();
+    Serial.println(F("Printing all flight logs..."));
+    for (uint8_t flight = 0; flight < FlashMemory::FLIGHT_FLASH_FLIGHTS; flight++) {
+        Serial.print(F("Flight "));
+        Serial.println(flight);
+        log_print_flight(flight);
+        Serial.println(F("---"));
+    }
 }
-
 
 static void log_print_flight(uint8_t flight) {
     uint8_t page[FlashMemory::FLIGHT_FLASH_PAGE_SIZE];
@@ -152,17 +156,15 @@ static void log_print_flight(uint8_t flight) {
     }
 }
 
-void log_print_all() {
-    if (write_enabled) {
-        Serial.println(F("Cannot print logs while logging is active."));
-        return;
-    }
-
-    Serial.println(F("Printing all flight logs..."));
-    for (uint8_t flight = 0; flight < FlashMemory::FLIGHT_FLASH_FLIGHTS; flight++) {
-        Serial.print(F("Flight "));
-        Serial.println(flight);
-        log_print_flight(flight);
-        Serial.println(F("---"));
-    }
+static void log_print_msg(const LogMessage& msg) {
+    Serial.print(msg.time_ms); Serial.print(',');
+    Serial.print(msg.gyro_x, 2); Serial.print(',');
+    Serial.print(msg.gyro_y, 2); Serial.print(',');
+    Serial.print(msg.gyro_z, 2); Serial.print(',');
+    Serial.print(msg.accel_x, 2); Serial.print(',');
+    Serial.print(msg.accel_y, 2); Serial.print(',');
+    Serial.print(msg.accel_z, 2); Serial.print(',');
+    Serial.print(msg.temp, 2); Serial.print(',');
+    Serial.print(msg.pressure, 2);
+    Serial.println();
 }

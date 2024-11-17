@@ -1,7 +1,8 @@
 #include <cstddef>
 #include <cstdint>
 
-struct LogMessage {
+// Ensure the struct is packed without padding
+struct __attribute__((packed)) LogMessage {
     uint32_t time_ms;
     float gyro_x, gyro_y, gyro_z;
     float accel_x, accel_y, accel_z;
@@ -39,5 +40,5 @@ void log_setup();
 void log_start();
 void log_stop();
 void log_add(const LogMessage& data);
-void log_print_all();
 void log_step();
+void log_print_all();

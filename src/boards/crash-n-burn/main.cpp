@@ -7,6 +7,7 @@
 #include "BMI088Gyro.hpp"
 #include "BMP390.hpp"
 #include "stm32pinouts.hpp"
+#include "FlashMemory.hpp"
 #include "log.hpp"
 
 // Conditional inclusion of USBSerial
@@ -19,6 +20,7 @@ USBSerial usb_serial;
 BMI088Accel accel(ACCEL_CS_PIN);
 BMI088Gyro gyro(GYRO_CS_PIN);
 BMP390 barometer(BARO_CS_PIN);
+FlashMemory flash(FLASH_CS_PIN);
 
 // Task handles
 TaskHandle_t taskReadSensorsHandle;
@@ -52,6 +54,9 @@ void setup() {
     accel.setup();
     gyro.setup();
     barometer.setup();
+
+    // Initialize flash memory
+    flash.setup();
 
     // Initialize logging system
     log_setup();
@@ -145,7 +150,7 @@ void TaskConditionMonitor(void* pvParameters) {
             loggingStartTime = millis();
 
             log_start();
-            
+
             #if defined(USBCON) && defined(USBD_USE_CDC)
                 usb_serial.println("Drop detected! Logging started.");
             #else
