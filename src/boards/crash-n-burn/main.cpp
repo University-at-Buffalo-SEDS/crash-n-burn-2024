@@ -2,230 +2,178 @@
 #include <SPI.h>
 #include <STM32FreeRTOS.h>
 
-#include "BMI088Accel.h"
-#include "BMI088Gyro.h"
-#include "BMP390.h"           
-#include "stm32pinouts.h"
-#include "FlashMemory.h"
+// Include sensor and logging headers
+#include "BMI088Accel.hpp"
+#include "BMI088Gyro.hpp"
+#include "BMP390.hpp"
+#include "stm32pinouts.hpp"
+#include "FlashMemory.hpp"
+#include "log.hpp"
 
+// Conditional inclusion of USBSerial
 #if defined(USBCON) && defined(USBD_USE_CDC)
 #include "USBSerial.h"
 USBSerial usb_serial;
 #endif
 
-BMI088Accel accel(ACCEL_CS_PIN);  
-BMI088Gyro gyro(GYRO_CS_PIN);    
-BMP390 barometer(BARO_CS_PIN);    
+// Sensor objects
+BMI088Accel accel(ACCEL_CS_PIN);
+BMI088Gyro gyro(GYRO_CS_PIN);
+BMP390 barometer(BARO_CS_PIN);
 FlashMemory flash(FLASH_CS_PIN);
 
-float accelData[3];
-float gyroData[3];
-float baroData[3];  
+// Task handles
+TaskHandle_t taskReadSensorsHandle;
+TaskHandle_t taskLogStepHandle;
+TaskHandle_t taskConditionMonitorHandle;
 
-SemaphoreHandle_t xAccelDataMutex;
-SemaphoreHandle_t xGyroDataMutex;
-SemaphoreHandle_t xBaroDataMutex;  
+// Logging control variables
+volatile bool dropDetected = false;
+volatile bool loggingActive = false;
+volatile uint32_t loggingStartTime = 0;
 
+// Function prototypes
 void TaskReadSensors(void* pvParameters);
-void TaskPrintSensors(void* pvParameters);
+void TaskLogStep(void* pvParameters);
+void TaskConditionMonitor(void* pvParameters);
 
 void setup() {
+    // Initialize Serial or USB Serial based on configuration
     #if defined(USBCON) && defined(USBD_USE_CDC)
         usb_serial.begin();
+        while (!usb_serial) { ; } // Wait for USB Serial to initialize
     #else
-        Serial.begin(9600);
+        Serial.begin(115200);
+        while (!Serial) { ; } // Wait for Serial to initialize
     #endif
 
-    while (!Serial) { ; } 
-
+    // Initialize SPI bus
     SPI.begin();
 
+    // Initialize sensors
     accel.setup();
     gyro.setup();
     barometer.setup();
 
-    // Create mutexes for shared data
-    xAccelDataMutex = xSemaphoreCreateMutex();
-    xGyroDataMutex = xSemaphoreCreateMutex();
-    xBaroDataMutex = xSemaphoreCreateMutex();
+    // Initialize flash memory
+    flash.setup();
 
-    if (xAccelDataMutex == NULL || xGyroDataMutex == NULL || xBaroDataMutex == NULL) {
-        Serial.println(F("Error creating mutexes"));
-        while (1);
-    }
+    // Initialize logging system
+    log_setup();
 
-    // Create the tasks
-    xTaskCreate(TaskReadSensors, "ReadSensors", 256, NULL, 2, NULL);
-    xTaskCreate(TaskPrintSensors, "PrintSensors", 256, NULL, 1, NULL);
+    // Create FreeRTOS tasks
+    xTaskCreate(TaskReadSensors, "ReadSensors", 2048, NULL, 2, &taskReadSensorsHandle);
+    xTaskCreate(TaskLogStep, "LogStep", 2048, NULL, 2, &taskLogStepHandle);
+    xTaskCreate(TaskConditionMonitor, "ConditionMonitor", 2048, NULL, 3, &taskConditionMonitorHandle);
 
-    // Start the scheduler
+    // Start the FreeRTOS scheduler
     vTaskStartScheduler();
 }
 
 void loop() {
-    // Empty. Tasks are now scheduled by FreeRTOS.
+    // Empty loop since FreeRTOS handles tasks
 }
 
-
+// Task to read sensors and add data to log buffer if logging is active
 void TaskReadSensors(void* pvParameters) {
     (void) pvParameters;
 
     for (;;) {
-        // Read data from accelerometer
-        accel.step();
+        if (loggingActive) {
+            uint32_t time_ms = millis();
 
-        // Copy data with mutex protection
-        if (xSemaphoreTake(xAccelDataMutex, portMAX_DELAY) == pdTRUE) {
-            accel.get(accelData);
-            xSemaphoreGive(xAccelDataMutex);
+            // Temporary buffers to hold sensor data
+            float localAccelData[3];
+            float localGyroData[3];
+            float temperature;
+            float pressure;
+
+            // Read accelerometer data
+            accel.step();
+            accel.get(localAccelData);
+
+            // Read gyroscope data
+            gyro.step();
+            gyro.get(localGyroData);
+
+            // Read barometer data
+            barometer.step();
+            temperature = barometer.getTemperature() / 100.0f; // Convert to °C
+            pressure = barometer.getPressure();
+
+            // Create log message
+            LogMessage logMsg(time_ms,
+                              localGyroData[0], localGyroData[1], localGyroData[2],
+                              localAccelData[0], localAccelData[1], localAccelData[2],
+                              temperature, pressure);
+
+            // Add to log buffer
+            log_add(logMsg);
         }
 
-        // Read data from gyroscope
-        gyro.step();
-
-        // Copy data with mutex protection
-        if (xSemaphoreTake(xGyroDataMutex, portMAX_DELAY) == pdTRUE) {
-            gyro.get(gyroData);
-            xSemaphoreGive(xGyroDataMutex);
-        }
-
-        // Read data from barometer
-        barometer.step();
-
-        // Copy barometer data with mutex protection
-        if (xSemaphoreTake(xBaroDataMutex, portMAX_DELAY) == pdTRUE) {
-            baroData[0] = barometer.getAltitude();
-            baroData[1] = barometer.getPressure();
-            baroData[2] = (float)barometer.getTemperature() / 100.0f;  // Convert to degrees Celsius
-            xSemaphoreGive(xBaroDataMutex);
-        }
-
-        // Delay for 100 ms
+        // Delay to set data collection rate (e.g., every 100 ms)
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
-// Task to print data from sensors
-void TaskPrintSensors(void* pvParameters) {
+// Task to process the log buffer and write to flash
+void TaskLogStep(void* pvParameters) {
     (void) pvParameters;
 
     for (;;) {
-        // Print accelerometer data
-        if (xSemaphoreTake(xAccelDataMutex, portMAX_DELAY) == pdTRUE) {
-            Serial.print(F("Accel: "));
-            Serial.print(accelData[0]);
-            Serial.print(F(", "));
-            Serial.print(accelData[1]);
-            Serial.print(F(", "));
-            Serial.print(accelData[2]);
-            Serial.print(F(" ("));
-            Serial.print(sqrtf(accelData[0] * accelData[0] + accelData[1] * accelData[1] + accelData[2] * accelData[2]));
-            Serial.println(F(") m/s^2"));
-            xSemaphoreGive(xAccelDataMutex);
-        }
+        log_step();
 
-        // Print gyroscope data
-        if (xSemaphoreTake(xGyroDataMutex, portMAX_DELAY) == pdTRUE) {
-            Serial.print(F("Gyro: "));
-            Serial.print(gyroData[0]);
-            Serial.print(F(", "));
-            Serial.print(gyroData[1]);
-            Serial.print(F(", "));
-            Serial.print(gyroData[2]);
-            Serial.println(F(" degree/s"));
-            xSemaphoreGive(xGyroDataMutex);
-        }
-
-        // Print barometer data
-        if (xSemaphoreTake(xBaroDataMutex, portMAX_DELAY) == pdTRUE) {
-            Serial.print(F("Altitude: "));
-            Serial.print(baroData[0]);
-            Serial.println(F(" m"));
-
-            Serial.print(F("Pressure: "));
-            Serial.print(baroData[1]);
-            Serial.println(F(" Pa"));
-
-            Serial.print(F("Temp: "));
-            Serial.print(baroData[2]);
-            Serial.println(F(" °C"));
-            xSemaphoreGive(xBaroDataMutex);
-        }
-
-        // Delay for 100 ms
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // Delay between log steps (adjust as needed)
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
-// Flash testing code
+// Task to monitor Z acceleration and control logging
+void TaskConditionMonitor(void* pvParameters) {
+    (void) pvParameters;
 
-/*
-#include <Arduino.h>
-#include "FlashMemory.h"
-#include "BMI088Gyro.h"
+    const float accelerationThreshold = 0.2f; // Threshold in g's (adjust as needed)
+    const uint32_t loggingDuration = 25000;    // Logging duration in milliseconds (25 seconds)
 
-// Flash and gyro setup
-FlashMemory flash(FLASH_CS_PIN);
-BMI088Gyro gyro(GYRO_CS_PIN);
+    for (;;) {
+        // Read Z-axis acceleration
+        float accelData[3];
+        accel.step();
+        accel.get(accelData);
 
-// Define the size of the data to write and read
-constexpr size_t NUM_READINGS = 1024; // Number of gyro readings
-constexpr size_t DATA_SIZE = NUM_READINGS * 3 * sizeof(float); // Total size in bytes
+        float zAcceleration = accelData[2];
 
-// Buffer for gyro data
-float gyroData[NUM_READINGS][3];
-uint8_t writeBuffer[DATA_SIZE];
-uint8_t readBuffer[DATA_SIZE];
+        // Check if Z acceleration is close to 0 (free-fall)
+        if (!dropDetected && fabs(zAcceleration) <= accelerationThreshold) {
+            dropDetected = true;
+            loggingActive = true;
+            loggingStartTime = millis();
 
-void setup() {
-    Serial.begin(115200);
-    while (!Serial) { }
+            log_start();
+            
+            #if defined(USBCON) && defined(USBD_USE_CDC)
+                usb_serial.println("Drop detected! Logging started.");
+            #else
+                Serial.println("Drop detected! Logging started.");
+            #endif
+        }
 
-    // Initialize flash and gyro
-    flash.setup();
-    gyro.setup();
+        // Check if logging duration has elapsed
+        if (loggingActive && (millis() - loggingStartTime >= loggingDuration)) {
+            loggingActive = false;
+            log_stop();
 
-    // Collect gyroscope data
-    Serial.println(F("Collecting gyroscope data..."));
-    for (size_t i = 0; i < NUM_READINGS; i++) {
-        gyro.step();
-        gyro.get(gyroData[i]);
-        delay(10); // Simulate a short delay between readings
-    }
+            #if defined(USBCON) && defined(USBD_USE_CDC)
+                usb_serial.println("Logging duration elapsed. Logging stopped.");
+            #else
+                Serial.println("Logging duration elapsed. Logging stopped.");
+            #endif
 
-    // Pack the gyro data into the write buffer
-    Serial.println(F("Packing data for writing..."));
-    for (size_t i = 0; i < NUM_READINGS; i++) {
-        memcpy(&writeBuffer[i * 3 * sizeof(float)], gyroData[i], 3 * sizeof(float));
-    }
+            // Optionally, print all logs after logging stops
+            log_print_all();
+        }
 
-    // Write the data to flash
-    Serial.println(F("Writing data to flash..."));
-    for (size_t page = 0; page < (DATA_SIZE / FlashMemory::FLIGHT_FLASH_PAGE_SIZE); page++) {
-        flash.write(page * FlashMemory::FLIGHT_FLASH_PAGE_SIZE, &writeBuffer[page * FlashMemory::FLIGHT_FLASH_PAGE_SIZE]);
-    }
-
-    // Read the data back from flash
-    Serial.println(F("Reading data from flash..."));
-    for (size_t page = 0; page < (DATA_SIZE / FlashMemory::FLIGHT_FLASH_PAGE_SIZE); page++) {
-        flash.read(page * FlashMemory::FLIGHT_FLASH_PAGE_SIZE, &readBuffer[page * FlashMemory::FLIGHT_FLASH_PAGE_SIZE]);
-    }
-
-    // Unpack and display the data
-    Serial.println(F("Displaying read data..."));
-    for (size_t i = 0; i < NUM_READINGS; i++) {
-        float readGyroData[3];
-        memcpy(readGyroData, &readBuffer[i * 3 * sizeof(float)], 3 * sizeof(float));
-        Serial.print("Rotation (X, Y, Z): ");
-        Serial.print(readGyroData[0], 2);
-        Serial.print(", ");
-        Serial.print(readGyroData[1], 2);
-        Serial.print(", ");
-        Serial.println(readGyroData[2], 2);
+        // Delay between checks (adjust as needed)
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
-
-void loop() {
-    // No additional logic in the loop
-}
-*/

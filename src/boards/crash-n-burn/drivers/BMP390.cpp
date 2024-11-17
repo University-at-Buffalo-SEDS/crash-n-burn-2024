@@ -1,4 +1,4 @@
-#include "BMP390.h"
+#include "BMP390.hpp"
 
 // SPI settings (10 MHz, MSB first, SPI Mode 0)
 const SPISettings BMP390::spi_settings(10000000, MSBFIRST, SPI_MODE0);

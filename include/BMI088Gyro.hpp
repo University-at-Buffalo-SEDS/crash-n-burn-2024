@@ -1,5 +1,5 @@
-#ifndef BMI088_GYRO_H
-#define BMI088_GYRO_H
+#ifndef BMI088_GYRO_HPP
+#define BMI088_GYRO_HPP
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -38,4 +38,4 @@ private:
     uint8_t cs_pin;
 };
 
-#endif // BMI088_GYRO_H
+#endif

@@ -1,4 +1,4 @@
-#include "BMI088Gyro.h"
+#include "BMI088Gyro.hpp"
 
 // Initialize the SPI settings
 const SPISettings BMI088Gyro::spi_settings(10000000, MSBFIRST, SPI_MODE0);

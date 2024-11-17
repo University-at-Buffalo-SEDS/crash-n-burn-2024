@@ -1,4 +1,4 @@
-#include "LTC2990.h"
+#include "LTC2990.hpp"
 
 LTC2990::LTC2990(uint8_t i2c_address) : i2c_address(i2c_address) {
     // Initialize voltages to NAN

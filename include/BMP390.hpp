@@ -1,5 +1,5 @@
-#ifndef BMP390_H
-#define BMP390_H
+#ifndef BMP390_HPP
+#define BMP390_HPP
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -92,4 +92,4 @@ private:
     int16_t last_temperature;
 };
 
-#endif // BMP390_H
+#endif 

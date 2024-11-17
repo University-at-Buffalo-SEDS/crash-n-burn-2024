@@ -1,4 +1,4 @@
-#include "BMI088Accel.h"
+#include "BMI088Accel.hpp"
 
 // Initialize the SPI settings
 const SPISettings BMI088Accel::spi_settings(10000000, MSBFIRST, SPI_MODE0);

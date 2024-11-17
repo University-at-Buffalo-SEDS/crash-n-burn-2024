@@ -1,5 +1,5 @@
-#ifndef BMI088_ACCEL_H
-#define BMI088_ACCEL_H
+#ifndef BMI088_ACCEL_HPP
+#define BMI088_ACCEL_HPP
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -50,4 +50,4 @@ private:
     uint8_t cs_pin;
 };
 
-#endif // BMI088_ACCEL_H
+#endif 

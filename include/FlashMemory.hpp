@@ -1,3 +1,6 @@
+#ifndef FLASH_MEMORY_HPP
+#define FLASH_MEMORY_HPP
+
 #include <cstddef>
 #include <cstdint>
 #include <Arduino.h>
@@ -6,7 +9,6 @@
 class FlashMemory {
 public:
     FlashMemory(uint8_t cs_pin);
-
 
     static constexpr size_t FLIGHT_FLASH_PAGE_SIZE = 256;
     static constexpr size_t FLIGHT_FLASH_BLOCK_SIZE = 65536;
@@ -48,3 +50,5 @@ private:
     void write_enable();
     void waitUntilNotBusy();
 };
+
+#endif

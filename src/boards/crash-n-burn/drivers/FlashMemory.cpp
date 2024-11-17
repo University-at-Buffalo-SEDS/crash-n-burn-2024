@@ -1,4 +1,4 @@
-#include "FlashMemory.h"
+#include "FlashMemory.hpp"
 #include <cassert>
 
 const SPISettings FlashMemory::spi_settings(18000000, MSBFIRST, SPI_MODE0);
@@ -106,6 +106,7 @@ void FlashMemory::erase(size_t page_addr) {
     write_enable();
 
     Serial.print(F("Erasing block at address: 0x"));
+
     Serial.println(page_addr, HEX);
 
     spi_begin();

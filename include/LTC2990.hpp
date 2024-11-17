@@ -1,5 +1,5 @@
-#ifndef LTC2990_H
-#define LTC2990_H
+#ifndef LTC2990_HPP
+#define LTC2990_HPP
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -56,4 +56,4 @@ private:
     int8_t write_register(uint8_t reg_address, uint8_t data);
 };
 
-#endif // LTC2990_H
+#endif 
