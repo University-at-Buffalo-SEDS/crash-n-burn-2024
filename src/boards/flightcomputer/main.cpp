@@ -14,7 +14,6 @@
 #include "consts.hpp"
 #include "kalman.hpp"
 #include "avghistory.hpp"
-// Assume that config.hpp defines channel_config, Channel, ChannelConfig, and other constants.
 
 // If using USB for debugging
 #if defined(USBCON) && defined(USBD_USE_CDC)
@@ -26,17 +25,16 @@ USBSerial usb_serial;
 void TaskReadSensors(void* pvParameters);
 void TaskPrintSensors(void* pvParameters);
 void TaskDeployment(void* pvParameters);
-void TaskChannel(void* pvParameters);
 
 // Forward declarations of utility functions
-void channel_fire(Channel chan);
 uint32_t delta(uint32_t start, uint32_t end);
 
-// Global data structures
+// Global sensor instances
 BMI088Accel accel(ACCEL_CS_PIN);
 BMI088Gyro gyro(GYRO_CS_PIN);
 BMP390 barometer(BARO_CS_PIN);
 
+// Sensor data arrays
 float accelData[3];
 float gyroData[3];
 float baroData[3]; // altitude, pressure, temperature
@@ -45,31 +43,6 @@ float baroData[3]; // altitude, pressure, temperature
 SemaphoreHandle_t xAccelDataMutex;
 SemaphoreHandle_t xGyroDataMutex;
 SemaphoreHandle_t xBaroDataMutex;
-
-struct ChannelConfig {
-	int fire_pin;
-};
-
-enum class Channel {
-	Drogue,
-	Main,
-	Count
-};
-
-constexpr std::array<ChannelConfig, (size_t)Channel::Count> channel_config = {
-	ChannelConfig {PB5},
-	ChannelConfig {PB6}
-};
-// Flight-related global variables
-// Channel status
-struct ChannelStatus {
-    uint32_t fire_time;
-    bool firing;
-};
-static std::array<ChannelStatus, channel_config.size()> channel_status;
-
-// Mutex for channel status
-SemaphoreHandle_t xChannelStatusMutex;
 
 // Kalman Filter instance and mutex
 #ifdef KALMAN_GAINS
@@ -107,6 +80,24 @@ uint32_t delta(uint32_t start, uint32_t end) {
     return (UINT32_MAX - start) + end + 1;
 }
 
+// Function to fire a specific channel
+void fireChannel(int fire_pin) {
+    // Activate the channel
+    digitalWrite(fire_pin, HIGH);
+    Serial.print(F("Firing pin "));
+    Serial.print(fire_pin);
+    Serial.println(F(" (HIGH)"));
+    
+    // Wait for 1 second
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    // Deactivate the channel
+    digitalWrite(fire_pin, LOW);
+    Serial.print(F("Deactivated pin "));
+    Serial.print(fire_pin);
+    Serial.println(F(" (LOW)"));
+}
+
 void setup() {
 #if defined(USBCON) && defined(USBD_USE_CDC)
     usb_serial.begin();
@@ -129,29 +120,25 @@ void setup() {
     xAccelDataMutex = xSemaphoreCreateMutex();
     xGyroDataMutex = xSemaphoreCreateMutex();
     xBaroDataMutex = xSemaphoreCreateMutex();
-    xChannelStatusMutex = xSemaphoreCreateMutex();
     xKalmanMutex = xSemaphoreCreateMutex();
 
     if (xAccelDataMutex == NULL || xGyroDataMutex == NULL || xBaroDataMutex == NULL ||
-        xChannelStatusMutex == NULL || xKalmanMutex == NULL) {
-        Serial.println(F("Error creating mutexes"));
+        xKalmanMutex == NULL) {
+        Serial.println(F("Error creating mutexes")); 
         while (1);
     }
 
-    // Initialize channel status
-    if (xSemaphoreTake(xChannelStatusMutex, portMAX_DELAY) == pdTRUE) {
-        for (auto &status : channel_status) {
-            status.firing = false;
-            status.fire_time = 0;
-        }
-        xSemaphoreGive(xChannelStatusMutex);
-    }
+    // Initialize channel pins to LOW
+    pinMode(RAPTOR_PIN, OUTPUT);
+    digitalWrite(RAPTOR_PIN, LOW);
+    
+    pinMode(PIRANHA_PIN, OUTPUT);
+    digitalWrite(PIRANHA_PIN, LOW);
 
     // Create tasks
     xTaskCreate(TaskReadSensors, "ReadSensors", 256, NULL, 2, NULL);
-    xTaskCreate(TaskPrintSensors, "PrintSensors", 256, NULL, 1, NULL);
-    xTaskCreate(TaskDeployment, "Deployment", 512, NULL, 2, NULL);
-    xTaskCreate(TaskChannel, "Channel", 256, NULL, 2, NULL);
+    xTaskCreate(TaskPrintSensors, "PrintSensors", 256, NULL, 3, NULL);
+    xTaskCreate(TaskDeployment, "Deployment", 512, NULL, 1, NULL);
 
     // Start the scheduler
     vTaskStartScheduler();
@@ -161,6 +148,7 @@ void loop() {
     // FreeRTOS scheduler handles tasks
 }
 
+// Task to read sensor data
 void TaskReadSensors(void* pvParameters) {
     (void) pvParameters;
     for (;;) {
@@ -191,6 +179,7 @@ void TaskReadSensors(void* pvParameters) {
     }
 }
 
+// Task to print sensor and Kalman filter data
 void TaskPrintSensors(void* pvParameters) {
     (void) pvParameters;
     for (;;) {
@@ -241,6 +230,7 @@ void TaskPrintSensors(void* pvParameters) {
     }
 }
 
+// Task to handle flight deployment logic
 void TaskDeployment(void* pvParameters) {
     (void) pvParameters;
 
@@ -283,26 +273,12 @@ void TaskDeployment(void* pvParameters) {
         accel_mag -= gravity_est_state.old_avg();
         float alt = raw_alt - ground_level_est_state.old_avg();
 
-        // Check if any channel is firing
-        bool any_channel_firing = false;
-        if (xSemaphoreTake(xChannelStatusMutex, portMAX_DELAY) == pdTRUE) {
-            for (const ChannelStatus &s : channel_status) {
-                if (s.firing) {
-                    any_channel_firing = true;
-                    break;
-                }
+        // Update Kalman Filter
+        if (xSemaphoreTake(xKalmanMutex, portMAX_DELAY) == pdTRUE) {
+            if (!kf.update(accel_mag, alt)) {
+                Serial.println(F("KalmanFilter: Update failed."));
             }
-            xSemaphoreGive(xChannelStatusMutex);
-        }
-
-        // Update Kalman Filter if no channel firing spike
-        if (!any_channel_firing) {
-            if (xSemaphoreTake(xKalmanMutex, portMAX_DELAY) == pdTRUE) {
-                if (!kf.update(accel_mag, alt)) {
-                    Serial.println(F("KalmanFilter: Update failed."));
-                }
-                xSemaphoreGive(xKalmanMutex);
-            }
+            xSemaphoreGive(xKalmanMutex);
         }
 
         // Access Kalman state
@@ -320,35 +296,26 @@ void TaskDeployment(void* pvParameters) {
             if (vel > LAUNCH_VELOCITY && accel_est > LAUNCH_ACCEL) {
                 phase = FlightPhase::Launched;
                 launched = true;
+                Serial.println(F("=== Launch detected!"));
             }
         } else if (phase == FlightPhase::Launched) {
             // Detect apogee
             if (vel < 0) {
                 apogee = pos;
-                channel_fire(Channel::Drogue);
-
+                fireChannel(RAPTOR_PIN); // Deploy parachute
                 phase = FlightPhase::DescendingWithDrogue;
-
-                Serial.println(F("===================================== Apogee!"));
+                Serial.println(F("===================================== Apogee! Drogue deployed."));
             }
         } else if (phase == FlightPhase::DescendingWithDrogue) {
-            // Deploy main if conditions are met
-            uint32_t now = millis();
-            uint32_t drogue_fire_time = 0;
-            if (xSemaphoreTake(xChannelStatusMutex, portMAX_DELAY) == pdTRUE) {
-                drogue_fire_time = channel_status[(size_t)Channel::Drogue].fire_time;
-                xSemaphoreGive(xChannelStatusMutex);
-            }
-
+            // Deploy main parachute if conditions are met
             if ((pos < MAIN_DEPLOY_ALTITUDE
 #ifdef FAILSAFE_VELOCITY
                  || vel < -FAILSAFE_VELOCITY
 #endif
-                ) && delta(drogue_fire_time, now) > 3000) {
+                )) {
+                fireChannel(PIRANHA_PIN); // Cut reefing line
                 phase = FlightPhase::DescendingWithMain;
-                channel_fire(Channel::Main);
-
-                Serial.println(F("===================================== Deploy main!"));
+                Serial.println(F("===================================== Main parachute deployed."));
             }
         } else if (phase == FlightPhase::DescendingWithMain) {
             if (pos < LANDED_ALT && fabs(vel) < LANDED_VELOCITY && fabs(accel_est) < LANDED_ACCEL) {
@@ -357,7 +324,7 @@ void TaskDeployment(void* pvParameters) {
                     if (land_time == 0) land_time = 1;
                 } else if (delta(land_time, millis()) > LANDED_TIME_MS) {
                     phase = FlightPhase::Landed;
-                    Serial.println(F("===================================== Landed!"));
+                    Serial.println(F("===================================== Landed safely!"));
                 }
             } else {
                 land_time = 0;
@@ -365,37 +332,5 @@ void TaskDeployment(void* pvParameters) {
         }
 
         vTaskDelay(pdMS_TO_TICKS(KALMAN_PERIOD));
-    }
-}
-
-void TaskChannel(void* pvParameters) {
-    (void) pvParameters;
-    for (;;) {
-        uint32_t now = millis();
-        // Manage channel firing timeouts
-        if (xSemaphoreTake(xChannelStatusMutex, portMAX_DELAY) == pdTRUE) {
-            for (size_t i = 0; i < channel_status.size(); ++i) {
-                ChannelStatus &status = channel_status[i];
-                const ChannelConfig &config = channel_config[i];
-                if (status.firing && delta(status.fire_time, now) > CHANNEL_FIRE_TIME) {
-                    status.firing = false;
-                    digitalWrite(config.fire_pin, LOW);
-                }
-            }
-            xSemaphoreGive(xChannelStatusMutex);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-}
-
-// Fire a specific channel (e.g., drogue or main)
-void channel_fire(Channel chan) {
-    if (xSemaphoreTake(xChannelStatusMutex, portMAX_DELAY) == pdTRUE) {
-        ChannelStatus &status = channel_status[(size_t)chan];
-        status.firing = true;
-        status.fire_time = millis();
-        digitalWrite(channel_config[(size_t)chan].fire_pin, HIGH);
-        xSemaphoreGive(xChannelStatusMutex);
     }
 }
