@@ -2,7 +2,7 @@
 #include <Wire.h>
 #include <STM32FreeRTOS.h>
 
-#include "LTC2990.h"
+#include "LTC2990.hpp"
 
 #if !defined(HAL_CAN_MODULE_ENABLED)
 #define HAL_CAN_MODULE_ENABLED
