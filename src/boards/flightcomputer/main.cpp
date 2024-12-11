@@ -80,32 +80,32 @@ uint32_t delta(uint32_t start, uint32_t end) {
     return (UINT32_MAX - start) + end + 1;
 }
 
-// Function to fire a specific channel
-void fireChannel(int fire_pin) {
-    // Activate the channel
-    digitalWrite(fire_pin, HIGH);
-    Serial.print(F("Firing pin "));
-    Serial.print(fire_pin);
-    Serial.println(F(" (HIGH)"));
+// // Function to fire a specific channel
+// void fireChannel(int fire_pin) {
+//     // Activate the channel
+//     digitalWrite(fire_pin, HIGH);
+//     Serial.print(F("Firing pin "));
+//     Serial.print(fire_pin);
+//     Serial.println(F(" (HIGH)"));
     
-    // Wait for 1 second
-    vTaskDelay(pdMS_TO_TICKS(1000));
+//     // Wait for 1 second
+//     vTaskDelay(pdMS_TO_TICKS(1000));
     
-    // Deactivate the channel
-    digitalWrite(fire_pin, LOW);
-    Serial.print(F("Deactivated pin "));
-    Serial.print(fire_pin);
-    Serial.println(F(" (LOW)"));
-}
+//     // Deactivate the channel
+//     digitalWrite(fire_pin, LOW);
+//     Serial.print(F("Deactivated pin "));
+//     Serial.print(fire_pin);
+//     Serial.println(F(" (LOW)"));
+// }
 
 void setup() {
-#if defined(USBCON) && defined(USBD_USE_CDC)
-    usb_serial.begin();
-#else
-    Serial.begin(9600);
-#endif
-
-    while (!Serial) { ; }
+    #if defined(USBCON) && defined(USBD_USE_CDC)
+        usb_serial.begin();
+        while (!usb_serial) { ; }
+    #else
+        Serial.begin(115200);
+        while (!Serial) { ; }
+    #endif
 
     // Initialize SPI and I2C
     SPI.begin();
@@ -129,11 +129,11 @@ void setup() {
     }
 
     // Initialize channel pins to LOW
-    pinMode(RAPTOR_PIN, OUTPUT);
-    digitalWrite(RAPTOR_PIN, LOW);
+    // pinMode(RAPTOR_PIN, OUTPUT);
+    // digitalWrite(RAPTOR_PIN, LOW);
     
-    pinMode(PIRANHA_PIN, OUTPUT);
-    digitalWrite(PIRANHA_PIN, LOW);
+    // pinMode(PIRANHA_PIN, OUTPUT);
+    // digitalWrite(PIRANHA_PIN, LOW);
 
     // Create tasks
     xTaskCreate(TaskReadSensors, "ReadSensors", 256, NULL, 2, NULL);
@@ -302,7 +302,7 @@ void TaskDeployment(void* pvParameters) {
             // Detect apogee
             if (vel < 0) {
                 apogee = pos;
-                fireChannel(RAPTOR_PIN); // Deploy parachute
+                // fireChannel(RAPTOR_PIN); // Deploy parachute
                 phase = FlightPhase::DescendingWithDrogue;
                 Serial.println(F("===================================== Apogee! Drogue deployed."));
             }
@@ -313,7 +313,7 @@ void TaskDeployment(void* pvParameters) {
                  || vel < -FAILSAFE_VELOCITY
 #endif
                 )) {
-                fireChannel(PIRANHA_PIN); // Cut reefing line
+                // fireChannel(PIRANHA_PIN); // Cut reefing line
                 phase = FlightPhase::DescendingWithMain;
                 Serial.println(F("===================================== Main parachute deployed."));
             }

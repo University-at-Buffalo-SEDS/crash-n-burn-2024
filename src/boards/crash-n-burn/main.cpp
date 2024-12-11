@@ -22,11 +22,6 @@ BMI088Gyro gyro(GYRO_CS_PIN);
 BMP390 barometer(BARO_CS_PIN);
 FlashMemory flash(FLASH_CS_PIN);
 
-// Task handles
-TaskHandle_t taskReadSensorsHandle;
-TaskHandle_t taskLogStepHandle;
-TaskHandle_t taskConditionMonitorHandle;
-
 // Logging control variables
 volatile bool dropDetected = false;
 volatile bool loggingActive = false;
@@ -38,13 +33,12 @@ void TaskLogStep(void* pvParameters);
 void TaskConditionMonitor(void* pvParameters);
 
 void setup() {
-    // Initialize Serial or USB Serial based on configuration
     #if defined(USBCON) && defined(USBD_USE_CDC)
         usb_serial.begin();
-        while (!usb_serial) { ; } // Wait for USB Serial to initialize
+        while (!usb_serial) { ; } 
     #else
         Serial.begin(115200);
-        while (!Serial) { ; } // Wait for Serial to initialize
+        while (!Serial) { ; } 
     #endif
 
     // Initialize SPI bus
@@ -65,9 +59,9 @@ void setup() {
     log_print_all();
 
     // Create FreeRTOS tasks
-    xTaskCreate(TaskReadSensors, "ReadSensors", 2048, NULL, 2, &taskReadSensorsHandle);
-    xTaskCreate(TaskLogStep, "LogStep", 2048, NULL, 2, &taskLogStepHandle);
-    xTaskCreate(TaskConditionMonitor, "ConditionMonitor", 2048, NULL, 3, &taskConditionMonitorHandle);
+    xTaskCreate(TaskReadSensors, "ReadSensors", 2048, NULL, 2, NULL);
+    xTaskCreate(TaskLogStep, "LogStep", 2048, NULL, 2, NULL);
+    xTaskCreate(TaskConditionMonitor, "ConditionMonitor", 2048, NULL, 3, NULL);
 
     // Start the FreeRTOS scheduler
     vTaskStartScheduler();
@@ -136,7 +130,7 @@ void TaskLogStep(void* pvParameters) {
 void TaskConditionMonitor(void* pvParameters) {
     (void) pvParameters;
 
-    const float accelerationThreshold = 0.2f; // Threshold in g's (adjust as needed)
+    const float accelerationThreshold = 1.0f; // Threshold in g's (adjust as needed)
     const uint32_t loggingDuration = 25000;    // Logging duration in milliseconds (25 seconds)
 
     for (;;) {
@@ -155,23 +149,14 @@ void TaskConditionMonitor(void* pvParameters) {
 
             log_start();
 
-            #if defined(USBCON) && defined(USBD_USE_CDC)
-                usb_serial.println("Drop detected! Logging started.");
-            #else
-                Serial.println("Drop detected! Logging started.");
-            #endif
+            Serial.println("Drop detected! Logging started.");
         }
 
         // Check if logging duration has elapsed
         if (loggingActive && (millis() - loggingStartTime >= loggingDuration)) {
             loggingActive = false;
             log_stop();
-
-            #if defined(USBCON) && defined(USBD_USE_CDC)
-                usb_serial.println("Logging duration elapsed. Logging stopped.");
-            #else
-                Serial.println("Logging duration elapsed. Logging stopped.");
-            #endif
+            Serial.println("Logging duration elapsed. Logging stopped.");
         }
 
         // Delay between checks (adjust as needed)
