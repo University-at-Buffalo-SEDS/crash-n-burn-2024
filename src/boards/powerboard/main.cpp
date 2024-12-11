@@ -57,6 +57,10 @@ void setup() {
     // Setup the device
     ltc2990.setup();
 
+    // Setup CAN
+    MX_FDCAN2_Init();
+    FDCAN_Config();
+
     // Create mutex for shared data
     xLTCDataMutex = xSemaphoreCreateMutex();
 
@@ -96,8 +100,11 @@ static void MX_FDCAN2_Init(void)
   hfdcan2.Init.StdFiltersNbr = 1;
   hfdcan2.Init.ExtFiltersNbr = 0;
   hfdcan2.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  if (HAL_FDCAN_Init(&hfdcan2) != HAL_OK)
+  HAL_StatusTypeDef err = HAL_FDCAN_Init(&hfdcan2);
+  if (err != HAL_OK)
   {
+    Serial.print(F("FDCAN Init failed: "));
+    Serial.print(err);
     Error_Handler();
   }
 }
@@ -113,27 +120,39 @@ static void FDCAN_Config(void)
   sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
   sFilterConfig.FilterID1 = 0x321;
   sFilterConfig.FilterID2 = 0x7FF;
-  if (HAL_FDCAN_ConfigFilter(&hfdcan2, &sFilterConfig) != HAL_OK)
+  HAL_StatusTypeDef err = HAL_FDCAN_ConfigFilter(&hfdcan2, &sFilterConfig);
+  if (err != HAL_OK)
   {
+    Serial.print(F("FDCAN filter config failed: "));
+    Serial.print(err);
     Error_Handler();
   }
 
   /* Configure global filter:
      Filter all remote frames with STD and EXT ID
      Reject non matching frames with STD ID and EXT ID */
-  if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan2, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE) != HAL_OK)
+  err = HAL_FDCAN_ConfigGlobalFilter(&hfdcan2, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE);
+  if (err != HAL_OK)
   {
+    Serial.print(F("FDCAN global filter config failed: "));
+    Serial.print(err);
     Error_Handler();
   }
 
   /* Start the FDCAN module */
-  if (HAL_FDCAN_Start(&hfdcan2) != HAL_OK)
+  err = HAL_FDCAN_Start(&hfdcan2);
+  if (err != HAL_OK)
   {
+    Serial.print(F("FDCAN global filter config failed: "));
+    Serial.print(err);
     Error_Handler();
   }
 
-  if (HAL_FDCAN_ActivateNotification(&hfdcan2, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK)
+  err = HAL_FDCAN_ActivateNotification(&hfdcan2, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0);
+  if (err != HAL_OK)
   {
+    Serial.print(F("FDCAN global filter config failed: "));
+    Serial.print(err);
     Error_Handler();
   }
 
