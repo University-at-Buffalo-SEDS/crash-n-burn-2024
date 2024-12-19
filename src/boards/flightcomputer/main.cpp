@@ -44,13 +44,8 @@ SemaphoreHandle_t xAccelDataMutex;
 SemaphoreHandle_t xGyroDataMutex;
 SemaphoreHandle_t xBaroDataMutex;
 
-// Kalman Filter instance and mutex
-#ifdef KALMAN_GAINS
-static KalmanFilter kf(KALMAN_PERIOD / 1000.0f, {KALMAN_GAINS});
-#else
-static KalmanFilter kf(KALMAN_PERIOD / 1000.0f,
-        ALTITUDE_SIGMA, ACCELERATION_SIGMA, MODEL_SIGMA);
-#endif
+static KalmanFilter kf(KALMAN_PERIOD / 1000.0f, ALTITUDE_SIGMA, ACCELERATION_SIGMA, MODEL_SIGMA);
+
 SemaphoreHandle_t xKalmanMutex;
 
 // Flight phase enumeration
@@ -220,9 +215,9 @@ void TaskPrintSensors(void* pvParameters) {
         // Print Kalman Filter estimates
         if (xSemaphoreTake(xKalmanMutex, portMAX_DELAY) == pdTRUE) {
             Serial.print(F("Kalman [pos, rate, accel]: "));
-            Serial.print(kf.getPosition()); Serial.print("m, ");
-            Serial.print(kf.getVelocity()); Serial.print("m/s, ");
-            Serial.print(kf.getAcceleration()); Serial.println("m/s^2");
+            Serial.print(kf.pos()); Serial.print("m, ");
+            Serial.print(kf.rate()); Serial.print("m/s, ");
+            Serial.print(kf.accel()); Serial.println("m/s^2");
             xSemaphoreGive(xKalmanMutex);
         }
 
@@ -273,20 +268,14 @@ void TaskDeployment(void* pvParameters) {
         accel_mag -= gravity_est_state.old_avg();
         float alt = raw_alt - ground_level_est_state.old_avg();
 
-        // Update Kalman Filter
-        if (xSemaphoreTake(xKalmanMutex, portMAX_DELAY) == pdTRUE) {
-            if (!kf.update(accel_mag, alt)) {
-                Serial.println(F("KalmanFilter: Update failed."));
-            }
-            xSemaphoreGive(xKalmanMutex);
-        }
+        kf.step(accel_mag, raw_alt);
 
         // Access Kalman state
         kfloat_t pos, vel, accel_est;
         if (xSemaphoreTake(xKalmanMutex, portMAX_DELAY) == pdTRUE) {
-            pos = kf.getPosition();
-            vel = kf.getVelocity();
-            accel_est = kf.getAcceleration();
+            pos = kf.pos();
+            vel = kf.rate();
+            accel_est = kf.accel();
             xSemaphoreGive(xKalmanMutex);
         }
 
